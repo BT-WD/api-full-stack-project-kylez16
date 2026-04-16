@@ -1,11 +1,30 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="en">
-  <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>API Full Stack Project</title>
-  </head>
-  <body>
-    <!-- You code goes here-->
-  </body>
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>3D Trivia Globe</title>
+    <link rel="stylesheet" href="index.css">
+    <script src="//cdn.jsdelivr.net/npm/globe.gl"></script>
+</head>
+<body>
+    <div id="ui">
+        <div id="prompt-card">
+            <div id="score">Score: 0</div>
+            <div id="question">Loading trivia...</div>
+        </div>
+    </div>
+
+    <!-- Stylish Popup for Country Details -->
+    <div id="popup">
+        <img id="flag" src="" alt="Flag">
+        <h3 id="country-name"></h3>
+        <p id="capital-city"></p>
+    </div>
+
+    <div id="feedback">Try Again!</div>
+    <div id="globeViz"></div>
+
+    <script src="index.js"></script>
+</body>
 </html>
