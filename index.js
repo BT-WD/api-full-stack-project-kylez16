@@ -1,3 +1,31 @@
+import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
+import { getFirestore, doc, setDoc, getDoc } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
+
+const firebaseConfig = {
+  apiKey: "AIzaSyDeWkRADhhBol2OubhIgVDn4rmwQB4CKAA",
+  authDomain: "fullstackproject-8c475.firebaseapp.com",
+  databaseURL: "https://fullstackproject-8c475-default-rtdb.firebaseio.com",
+  projectId: "fullstackproject-8c475",
+  storageBucket: "fullstackproject-8c475.firebasestorage.app",
+  messagingSenderId: "855684649103",
+  appId: "1:855684649103:web:7d58505497cdc18be0e0fa"
+};
+
+
+
+
+const app = initializeApp(firebaseConfig);
+const db = getFirestore(app);
+
+function getUserId() {
+    let id = localStorage.getItem("userId");
+    if (!id) {
+        id = crypto.randomUUID();
+        localStorage.setItem("userId", id);
+    }
+    return id;
+}
+
 let gameState = { score: 0, selectedCountry: null };
 let currentQuestionIndex = 0;
 let currentQuestions = [];
@@ -209,6 +237,7 @@ document.getElementById('nextBtn').onclick = () => {
         // Quiz finished
         if (allCorrect) {
             gameState.score++;
+            saveUserData(userId);
         }
 
         document.getElementById('score').innerText = `Score: ${gameState.score}`;
@@ -259,22 +288,13 @@ function generateNearbyPopulations(population, count) {
     return Array.from(results);
 }
 
-function formatCurrencyName(name) {
-    if (!name) return null;
-    return name
-        .toLowerCase()
-        .split(' ')
-        .map(w => w.charAt(0).toUpperCase() + w.slice(1))
-        .join(' ');
-}
-
 function normalizeCurrency(name) {
     if (!name) return null;
 
     const lower = name.toLowerCase();
 
-    if (lower.includes("euro")) return "Euro (€)";
-    if (lower.includes("dollar")) return "Dollar ($)";
+    if (lower.includes("euro")) return "Euro";
+    if (lower.includes("dollar")) return "Dollar";
 
     return name
         .toLowerCase()
@@ -282,3 +302,82 @@ function normalizeCurrency(name) {
         .map(w => w.charAt(0).toUpperCase() + w.slice(1))
         .join(" ");
 }
+
+function getTodaySeed() {
+    const today = new Date();
+    return `${today.getFullYear()}-${today.getMonth()+1}-${today.getDate()}`;
+}
+
+async function fetchDailyTrivia() {
+    const seed = getTodaySeed();
+
+    // Store last fetched seed
+    const storedSeed = localStorage.getItem("dailySeed");
+
+    if (storedSeed === seed) {
+        return JSON.parse(localStorage.getItem("dailyQuestions"));
+    }
+
+    const res = await fetch(`https://opentdb.com/api.php?amount=5&type=multiple`);
+    const data = await res.json();
+
+    const questions = data.results.map(q => {
+        const options = shuffle([
+            ...q.incorrect_answers,
+            q.correct_answer
+        ]);
+
+        return {
+            question: decodeHTML(q.question),
+            correct: decodeHTML(q.correct_answer),
+            options: options.map(decodeHTML)
+        };
+    });
+
+    // Save for the day
+    localStorage.setItem("dailySeed", seed);
+    localStorage.setItem("dailyQuestions", JSON.stringify(questions));
+
+    return questions;
+}
+
+function decodeHTML(str) {
+    const txt = document.createElement("textarea");
+    txt.innerHTML = str;
+    return txt.value;
+}
+
+document.getElementById('dailyBtn').onclick = async () => {
+    const today = getTodaySeed();
+
+
+
+    const questions = await fetchDailyTrivia();
+
+    // Mark as completed after starting
+    localStorage.setItem("dailyCompleted", today);
+
+    showQuiz(questions, "Daily Trivia");
+};
+
+async function saveUserData(userId) {
+    await setDoc(doc(db, "users", userId), {
+        score: gameState.score,
+        lastPlayed: new Date().toISOString()
+    });
+}
+
+async function loadUserData(userId) {
+    const docRef = doc(db, "users", userId);
+    const docSnap = await getDoc(docRef);
+
+    if (docSnap.exists()) {
+        const data = docSnap.data();
+        gameState.score = data.score || 0;
+        document.getElementById('score').innerText = `Score: ${gameState.score}`;
+    }
+}
+
+const userId = getUserId();
+loadUserData(userId);
+localStorage.setItem("dailyCompleted", getTodaySeed());
