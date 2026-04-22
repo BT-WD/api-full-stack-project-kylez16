@@ -71,17 +71,21 @@ window.onresize = () => {
 function generateQuestions(country) {
     const capital = country.capital ? country.capital[0] : "Unknown";
     const currency = country.currencies
-        ? Object.values(country.currencies)[0].name
+        ? normalizeCurrency(Object.values(country.currencies)[0].name)
         : "Unknown";
-
     // Build pools
     const capitalPool = allCountries.map(c => c.capital?.[0]).filter(Boolean);
-    const regionPool = [...new Set(allCountries.map(c => c.region))];
-    const currencyPool = allCountries.map(c => {
-        if (!c.currencies) return null;
-        const first = Object.values(c.currencies)[0];
-        return first?.name ?? null;  // guard against currencies object having no entries
-    }).filter(Boolean);
+    const currencyPool = [
+        ...new Set(
+            allCountries
+                .map(c => {
+                    if (!c.currencies) return null;
+                    const first = Object.values(c.currencies)[0];
+                    return normalizeCurrency(first?.name);
+                })
+                .filter(Boolean)
+        )
+    ];
     const flagPool = allCountries
     .filter(c => c.flags?.png)
     .map(c => ({
@@ -253,4 +257,28 @@ function generateNearbyPopulations(population, count) {
     }
 
     return Array.from(results);
+}
+
+function formatCurrencyName(name) {
+    if (!name) return null;
+    return name
+        .toLowerCase()
+        .split(' ')
+        .map(w => w.charAt(0).toUpperCase() + w.slice(1))
+        .join(' ');
+}
+
+function normalizeCurrency(name) {
+    if (!name) return null;
+
+    const lower = name.toLowerCase();
+
+    if (lower.includes("euro")) return "Euro (€)";
+    if (lower.includes("dollar")) return "Dollar ($)";
+
+    return name
+        .toLowerCase()
+        .split(" ")
+        .map(w => w.charAt(0).toUpperCase() + w.slice(1))
+        .join(" ");
 }
