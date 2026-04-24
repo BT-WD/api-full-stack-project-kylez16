@@ -8,11 +8,26 @@
     <script src="//cdn.jsdelivr.net/npm/globe.gl"></script>
 </head>
 <body>
+  
     <button id="dailyBtn">Daily Trivia</button>
+
     <div id="ui">
         <div id="prompt-card">
             <div id="score">Score: 0</div>
         </div>
+    </div>
+
+    <!-- 🌍 Globe container (wrap it so we can align leaderboard beside it) -->
+    <div id="main-container">
+
+        <div id="globeViz"></div>
+
+        <!-- 🏆 Leaderboard -->
+        <div id="leaderboard">
+            <h2>Daily Leaderboard</h2>
+            <div id="leaderboardList"></div>
+        </div>
+
     </div>
 
     <!-- Quiz Modal -->
@@ -22,16 +37,13 @@
 
             <h2 id="quizCountry"></h2>
 
-            <div id="questionContainer">
-                <!-- Questions will be injected here -->
-            </div>
+            <div id="questionContainer"></div>
 
             <button id="nextBtn">Next</button>
         </div>
     </div>
 
     <div id="feedback"></div>
-    <div id="globeViz"></div>
 
     <script type="module" src="index.js"></script>
 

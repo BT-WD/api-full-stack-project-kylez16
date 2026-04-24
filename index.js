@@ -1,7 +1,9 @@
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
 import { getFirestore, doc, setDoc, getDoc } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
+import { collection, getDocs, query, orderBy, limit } 
+from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
+
 let countryResults = {};
-let activeCountry = null;
 let dailyScore = 0;
 
 
@@ -15,9 +17,6 @@ const firebaseConfig = {
   messagingSenderId: "855684649103",
   appId: "1:855684649103:web:7d58505497cdc18be0e0fa"
 };
-
-
-
 
 const app = initializeApp(firebaseConfig);
 const db = getFirestore(app);
@@ -103,8 +102,6 @@ function handleCountryClick(polygon) {
                 console.error("No country found for:", countryName);
                 return;
             }
-
-            activeCountry = normalizeName(countryName);
             showQuiz(generateQuestions(country), country.name.common);
         })
         .catch(err => console.error("Country fetch failed:", err));
@@ -328,6 +325,8 @@ function checkAnswer(selected, correct, button) {
     if (answered) return;
     answered = true;
 
+    const isDaily = document.getElementById('quizCountry').innerText === "Daily Trivia";
+
     const buttons = document.querySelectorAll('#questionContainer button');
 
     buttons.forEach(btn => {
@@ -339,13 +338,18 @@ function checkAnswer(selected, correct, button) {
     if (selected !== correct) {
         button.style.backgroundColor = "red";
         allCorrect = false;
+    } else {
+        if (isDaily) {
+            dailyScore++; 
+        }
     }
+
     saveQuizSession({
-    country: normalizeName(document.getElementById('quizCountry').innerText),
-    questions: currentQuestions,
-    currentQuestionIndex,
-    allCorrect
-});
+        country: normalizeName(document.getElementById('quizCountry').innerText),
+        questions: currentQuestions,
+        currentQuestionIndex,
+        allCorrect
+    });
 }
 // Next button
 document.getElementById('nextBtn').onclick = () => {
@@ -368,11 +372,8 @@ document.getElementById('nextBtn').onclick = () => {
         const isDaily = document.getElementById('quizCountry').innerText === "Daily Trivia";
 
         if (allCorrect) {
-            if (isDaily) {
-                dailyScore++;
-            } else {
+            if (!isDaily) {
                 gameState.score++;
-                saveUserData(userId);
                 saveLocalScore();
             }
 
@@ -527,12 +528,7 @@ document.getElementById('dailyBtn').onclick = async () => {
     localStorage.setItem("dailyStarted", today);
 };
 
-async function saveUserData(userId) {
-    await setDoc(doc(db, "users", userId), {
-        score: gameState.score,
-        lastPlayed: new Date().toISOString()
-    });
-}
+
 
 async function loadUserData(userId) {
     const docRef = doc(db, "users", userId);
@@ -555,16 +551,16 @@ async function promptForUsernameAndSaveScore() {
         localStorage.setItem("username", username);
     }
 
-    await saveToLeaderboard(username, dailyScore); 
+    await saveToLeaderboard(username); 
 }
 
-async function saveToLeaderboard(username, score) {
+async function saveToLeaderboard(username) {
     try {
         const today = getTodaySeed();
 
         await setDoc(doc(db, "leaderboard", `${today}_${userId}`), {
             username: username,
-            score: score,
+            score: dailyScore,
             date: today,
             userId: userId
         });
@@ -591,6 +587,40 @@ function loadLocalScore() {
     }
 }
 
+async function loadLeaderboard() {
+    const today = getTodaySeed();
+
+    const snapshot = await getDocs(collection(db, "leaderboard"));
+
+    const list = document.getElementById("leaderboardList");
+    list.innerHTML = "";
+
+    const entries = [];
+
+    snapshot.forEach(docSnap => {
+        const data = docSnap.data();
+
+        if (data.date === today) {
+            entries.push(data);
+        }
+    });
+
+    // sort highest score first
+    entries.sort((a, b) => b.score - a.score);
+
+    entries.slice(0, 10).forEach(entry => {
+        const div = document.createElement("div");
+        div.className = "leader-item";
+        div.innerHTML = `
+            <span>${entry.username}</span>
+            <span>${entry.score}</span>
+        `;
+        list.appendChild(div);
+    });
+}
+
 const userId = getUserId();
 loadLocalScore(); 
 loadUserData(userId);
+loadLeaderboard();
+setInterval(loadLeaderboard, 10000);

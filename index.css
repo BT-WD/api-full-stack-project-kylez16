@@ -128,3 +128,30 @@ body {
 #dailyBtn:active {
     transform: scale(0.97);
 }
+
+#leaderboard {
+    position: fixed;
+    right: 0;
+    top: 0;
+    width: 250px;
+    height: 100vh;
+    background: rgba(20, 20, 20, 0.95);
+    color: white;
+    padding: 15px;
+    overflow-y: auto;
+    font-family: Arial, sans-serif;
+}
+
+#leaderboard h2 {
+    text-align: center;
+    margin-bottom: 10px;
+}
+
+.leader-item {
+    padding: 8px;
+    margin-bottom: 8px;
+    background: rgba(255,255,255,0.08);
+    border-radius: 6px;
+    display: flex;
+    justify-content: space-between;
+}
