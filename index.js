@@ -1,5 +1,10 @@
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
 import { getFirestore, doc, setDoc, getDoc } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
+let countryResults = {};
+let activeCountry = null;
+let dailyScore = 0;
+
+
 
 const firebaseConfig = {
   apiKey: "AIzaSyDeWkRADhhBol2OubhIgVDn4rmwQB4CKAA",
@@ -54,30 +59,138 @@ const globe = Globe()(document.getElementById('globeViz'))
     .onPolygonClick(handleCountryClick);
 
 globe.polygonCapColor(d => {
-    return gameState.selectedCountry === d
-        ? 'rgba(42, 197, 42, 0.7)'
-        : 'rgba(100, 100, 100, 0.3)';
-});
+    const name = d.properties.name;
+    const result = countryResults[normalizeName(name)];
 
+    if (result === "correct") {
+        return 'rgba(42, 197, 42, 0.7)'; // green
+    }
+    if (result === "wrong") {
+        return 'rgba(197, 42, 42, 0.7)'; // red
+    }
+
+    return 'rgba(100, 100, 100, 0.3)'; // default
+});
 // Click handler
 function handleCountryClick(polygon) {
     gameState.selectedCountry = polygon;
 
     const countryName = polygon.properties.name;
-    fetch(`https://restcountries.com/v3.1/name/${countryName}?fields=name,capital,region,currencies,population,flags`)
-        .then(res => res.json())
-        .then(data => {
-            const country = Array.isArray(data) && data[0];
+
+    // If this country was already clicked today, do nothing
+    const key = normalizeName(countryName);
+
+    if (countryResults[key]) {
+        return; // already completed
+    }
+    const saved = loadQuizSession();
+
+    if (saved && saved.country === key) {
+        currentQuestions = saved.questions;
+        currentQuestionIndex = saved.currentQuestionIndex;
+        allCorrect = saved.allCorrect;
+
+        document.getElementById('quizCountry').innerText = countryName;
+        document.getElementById('quizModal').classList.remove('hidden');
+
+        renderQuestion();
+        return;
+    }
+
+    fetchCountryData(countryName)
+        .then(country => {
             if (!country) {
                 console.error("No country found for:", countryName);
                 return;
             }
+
+            activeCountry = normalizeName(countryName);
             showQuiz(generateQuestions(country), country.name.common);
         })
         .catch(err => console.error("Country fetch failed:", err));
 
-    globe.polygonsData(globe.polygonsData());
+        globe.polygonsData(globe.polygonsData());
+    }
+
+// Helpers to record which countries were clicked for the current day
+
+
+
+function getQuizSessionKey() {
+    return `quizSession_${getTodaySeed()}`;
 }
+
+function saveQuizSession(session) {
+    localStorage.setItem(getQuizSessionKey(), JSON.stringify(session));
+}
+
+function loadQuizSession() {
+    try {
+        return JSON.parse(localStorage.getItem(getQuizSessionKey()));
+    } catch {
+        return null;
+    }
+}
+
+function clearQuizSession() {
+    localStorage.removeItem(getQuizSessionKey());
+}
+
+// Utility: normalize country names for consistent keys
+function normalizeName(name) {
+    if (!name) return '';
+
+    return String(name)
+        .toLowerCase()
+        .replace(/of america|the united states|usa/g, "united states")
+        .replace(/\s+/g, ' ')
+        .trim();
+}
+
+
+
+// Load persisted country results for today so highlights survive refresh
+loadCountryResults();
+
+// Persisted results helpers (per-day)
+function getCountryResultsKey() {
+    return `countryResults_${getTodaySeed()}`;
+}
+
+function loadCountryResults() {
+    try {
+        const raw = localStorage.getItem(getCountryResultsKey());
+        const parsed = raw ? JSON.parse(raw) : {};
+        // Normalize keys so lookups match polygon properties regardless of formatting
+        countryResults = {};
+        Object.keys(parsed).forEach(k => {
+            countryResults[normalizeName(k)] = parsed[k];
+        });
+    } catch (e) {
+        console.error('Failed to load countryResults:', e);
+        countryResults = {};
+    }
+}
+
+function saveCountryResults() {
+    try {
+        // Save using original keys (already normalized in memory)
+        localStorage.setItem(getCountryResultsKey(), JSON.stringify(countryResults));
+    } catch (e) {
+        console.error('Failed to save countryResults:', e);
+    }
+}
+
+// Initialize polygon cap color to use normalized lookup
+globe.polygonCapColor(d => {
+    const name = d.properties.name;
+    const result = countryResults[normalizeName(name)];
+
+    if (result === "correct") return 'rgba(42, 197, 42, 0.7)';
+    if (result === "wrong") return 'rgba(197, 42, 42, 0.7)';
+
+    return 'rgba(100, 100, 100, 0.3)';
+});
 
 // Load GeoJSON
 fetch('https://raw.githubusercontent.com/holtzy/D3-graph-gallery/master/DATA/world.geojson')
@@ -86,6 +199,9 @@ fetch('https://raw.githubusercontent.com/holtzy/D3-graph-gallery/master/DATA/wor
         globe.polygonsData(countries.features);
         globe.width(window.innerWidth);
         globe.height(window.innerHeight);
+
+        // Force a refresh so persisted countryResults apply immediately after load
+        globe.polygonsData(globe.polygonsData());
     })
     .catch(err => console.error("GeoJSON load failed:", err));
 
@@ -224,6 +340,12 @@ function checkAnswer(selected, correct, button) {
         button.style.backgroundColor = "red";
         allCorrect = false;
     }
+    saveQuizSession({
+    country: normalizeName(document.getElementById('quizCountry').innerText),
+    questions: currentQuestions,
+    currentQuestionIndex,
+    allCorrect
+});
 }
 // Next button
 document.getElementById('nextBtn').onclick = () => {
@@ -232,26 +354,56 @@ document.getElementById('nextBtn').onclick = () => {
     currentQuestionIndex++;
 
     if (currentQuestionIndex < currentQuestions.length) {
+        saveQuizSession({
+            country: normalizeName(document.getElementById('quizCountry').innerText),
+            questions: currentQuestions,
+            currentQuestionIndex,
+            allCorrect
+        });
+
         renderQuestion();
     } else {
-        // Quiz finished
+        const countryName = document.getElementById('quizCountry').innerText;
+        const key = normalizeName(countryName);
+        const isDaily = document.getElementById('quizCountry').innerText === "Daily Trivia";
+
         if (allCorrect) {
-            gameState.score++;
-            saveUserData(userId);
+            if (isDaily) {
+                dailyScore++;
+            } else {
+                gameState.score++;
+                saveUserData(userId);
+                saveLocalScore();
+            }
+
+            countryResults[key] = "correct";
+        } else {
+            countryResults[key] = "wrong";
         }
 
-        document.getElementById('score').innerText = `Score: ${gameState.score}`;
+        if (isDaily) {
+            localStorage.setItem("dailyCompleted", getTodaySeed());
+            promptForUsernameAndSaveScore();
+        }
+
+        countryResults[key] = allCorrect ? "correct" : "wrong";
+        saveCountryResults();
+        clearQuizSession();
+
+        globe.polygonsData(globe.polygonsData());
+
+        document.getElementById('score').innerText =
+            `Score: ${gameState.score}`;
+
         document.getElementById('quizModal').classList.add('hidden');
     }
 };
-
 // Close button
 document.getElementById('closeBtn').onclick = () => {
     document.getElementById('quizModal').classList.add('hidden');
 };
 
 function formatPopulation(input) {
-    // Remove commas if it's a string
     const num = typeof input === "string"
         ? Number(input.replace(/,/g, ""))
         : input;
@@ -281,7 +433,7 @@ function generateNearbyPopulations(population, count) {
         const value = formatPopulation(Math.round(population * factor));
 
         if (value !== correct) {
-            results.add(value); // Set prevents duplicates
+            results.add(value);
         }
     }
 
@@ -310,8 +462,6 @@ function getTodaySeed() {
 
 async function fetchDailyTrivia() {
     const seed = getTodaySeed();
-
-    // Store last fetched seed
     const storedSeed = localStorage.getItem("dailySeed");
 
     if (storedSeed === seed) {
@@ -333,12 +483,27 @@ async function fetchDailyTrivia() {
             options: options.map(decodeHTML)
         };
     });
-
-    // Save for the day
     localStorage.setItem("dailySeed", seed);
     localStorage.setItem("dailyQuestions", JSON.stringify(questions));
 
     return questions;
+}
+
+function fetchCountryData(countryName) {
+    const url = `https://restcountries.com/v3.1/name/${encodeURIComponent(countryName)}?fullText=true&fields=name,capital,region,currencies,population,flags`;
+
+    return fetch(url)
+        .then(res => {
+            if (!res.ok) throw new Error("Full match failed");
+            return res.json();
+        })
+        .then(data => Array.isArray(data) ? data[0] : data)
+        .catch(() => {
+            // fallback: partial match (more forgiving)
+            return fetch(`https://restcountries.com/v3.1/name/${encodeURIComponent(countryName)}`)
+                .then(res => res.json())
+                .then(data => Array.isArray(data) ? data[0] : data);
+        });
 }
 
 function decodeHTML(str) {
@@ -349,15 +514,17 @@ function decodeHTML(str) {
 
 document.getElementById('dailyBtn').onclick = async () => {
     const today = getTodaySeed();
+    const completed = localStorage.getItem("dailyCompleted");
 
-
-
+    if (completed === today) {
+        alert("You already completed today's daily quiz!");
+        return;
+    }
+    dailyScore = 0;
     const questions = await fetchDailyTrivia();
 
-    // Mark as completed after starting
-    localStorage.setItem("dailyCompleted", today);
-
     showQuiz(questions, "Daily Trivia");
+    localStorage.setItem("dailyStarted", today);
 };
 
 async function saveUserData(userId) {
@@ -378,6 +545,52 @@ async function loadUserData(userId) {
     }
 }
 
+async function promptForUsernameAndSaveScore() {
+    let username = localStorage.getItem("username");
+
+    if (!username) {
+        username = prompt("Enter a username for the leaderboard:");
+        if (!username) return;
+
+        localStorage.setItem("username", username);
+    }
+
+    await saveToLeaderboard(username, dailyScore); 
+}
+
+async function saveToLeaderboard(username, score) {
+    try {
+        const today = getTodaySeed();
+
+        await setDoc(doc(db, "leaderboard", `${today}_${userId}`), {
+            username: username,
+            score: score,
+            date: today,
+            userId: userId
+        });
+
+        console.log("Leaderboard saved!");
+    } catch (e) {
+        console.error("Error saving leaderboard:", e);
+    }
+}
+
+function getLocalScoreKey() {
+    return `gameScore_${userId}`;
+}
+
+function saveLocalScore() {
+    localStorage.setItem(getLocalScoreKey(), String(gameState.score));
+}
+
+function loadLocalScore() {
+    const raw = localStorage.getItem(getLocalScoreKey());
+    if (raw !== null && !isNaN(Number(raw))) {
+        gameState.score = Number(raw);
+        document.getElementById('score').innerText = `Score: ${gameState.score}`;
+    }
+}
+
 const userId = getUserId();
+loadLocalScore(); 
 loadUserData(userId);
-localStorage.setItem("dailyCompleted", getTodaySeed());
